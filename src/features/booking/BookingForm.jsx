@@ -18,16 +18,15 @@ const BookingForm = () => {
 
   const [formData, setFormData] = useState({
     date: '',
-    startTime: '',
-    endTime: '',
-    name: '',
-    phone: '',
-    email: '',
+    slot: '', // e.g. '09:00'
+    hours: 1,
     players: 1,
+    sport: '',
+    court: '',
   });
-
   const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
+  const [maxHours, setMaxHours] = useState(5);
 
   const { selectedTurf, selectedLoading, selectedError } = useSelector((state) => state.turfs);
 
@@ -49,30 +48,100 @@ const BookingForm = () => {
   }, [dispatch]);
 
   useEffect(() => {
+    let dateSlots = [];
+  
+    // check date match
     if (selectedTurf?.availableSlots && selectedDate) {
-      const dateSlots = selectedTurf.availableSlots.filter(slot =>
+      dateSlots = selectedTurf.availableSlots.filter(slot =>
         new Date(slot.date).toDateString() === new Date(selectedDate).toDateString()
       );
-      setAvailableSlots(dateSlots);
     }
+  
+    // Fallback dummy slots: every hour from 6 AM to 11 PM
+    if ((!selectedTurf?.availableSlots || selectedTurf.availableSlots.length === 0 || dateSlots.length === 0) && selectedDate) {
+      const slots = [];
+      for (let hour = 6; hour < 23; hour++) {
+        const start = `${hour.toString().padStart(2, '0')}:00`;
+        const end = `${(hour + 1).toString().padStart(2, '0')}:00`;
+        slots.push({ date: selectedDate, startTime: start, endTime: end });
+      }
+      dateSlots = slots;
+    }
+  
+    setAvailableSlots(dateSlots);
   }, [selectedTurf, selectedDate]);
+  
+
+  // Update maxHours when slot or slots list changes
+  useEffect(() => {
+    if (!formData.slot || !selectedDate || availableSlots.length === 0) {
+      setMaxHours(1);
+      return;
+    }
+  
+    const slotsSorted = [...availableSlots].sort((a, b) =>
+      a.startTime.localeCompare(b.startTime)
+    );
+  
+    const index = slotsSorted.findIndex(slot => slot.startTime === formData.slot);
+    if (index === -1) {
+      setMaxHours(1);
+      return;
+    }
+  
+    let count = 1;
+    let currentEnd = new Date(`${selectedDate}T${slotsSorted[index].endTime}`);
+  
+    for (let i = index + 1; i < slotsSorted.length; i++) {
+      const nextStart = new Date(`${selectedDate}T${slotsSorted[i].startTime}`);
+      if (nextStart.getTime() === currentEnd.getTime()) {
+        count++;
+        currentEnd = new Date(`${selectedDate}T${slotsSorted[i].endTime}`);
+      } else {
+        break;
+      }
+    }
+  
+    setMaxHours(count);
+    setFormData(prev => ({
+      ...prev,
+      hours: Math.min(prev.hours, count),
+    }));
+  }, [formData.slot, selectedDate, availableSlots]);
+  
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }));
-
     if (name === 'date') {
       setSelectedDate(value);
       setFormData(prev => ({
         ...prev,
-        startTime: '',
-        endTime: '',
+        date: value,
+        slot: '',
+        hours: 1,
+      }));
+    } else if (name === 'slot') {
+      setFormData(prev => ({
+        ...prev,
+        slot: value,
+        hours: 1,
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value,
       }));
     }
   };
+  
+
+  const handleHourChange = (delta) => {
+    setFormData(prev => {
+      const newHours = Math.max(1, Math.min(prev.hours + delta, maxHours));
+      return { ...prev, hours: newHours };
+    });
+  };
+  
 
   const { mutate: createBooking, isLoading } = useMutation({
     mutationFn: async (data) => {
@@ -95,21 +164,39 @@ const BookingForm = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-
-    const selectedTime = new Date(formData.date + 'T' + formData.startTime);
-    const endTime = new Date(formData.date + 'T' + formData.endTime);
-
-    if (!availableSlots.some(slot => {
-      const slotStart = new Date(slot.date + 'T' + slot.startTime);
-      const slotEnd = new Date(slot.date + 'T' + slot.endTime);
-      return selectedTime >= slotStart && endTime <= slotEnd;
-    })) {
+    if (!formData.date || !formData.slot || !formData.sport || !formData.court) {
+      toast.error('Please fill all required fields');
+      return;
+    }
+    // Validate slot availability
+    const slotObj = availableSlots.find(slot => slot.startTime === formData.slot);
+    if (!slotObj) {
       toast.error('Selected time slot is not available');
       return;
     }
-
-    createBooking(formData);
+    // Calculate end time
+    const start = new Date(`${formData.date}T${formData.slot}`);
+    const end = new Date(start.getTime() + formData.hours * 60 * 60 * 1000);
+    const slotEnd = new Date(`${formData.date}T${slotObj.endTime}`);
+    if (end > slotEnd) {
+      toast.error('Selected duration exceeds available slot');
+      return;
+    }
+    createBooking({
+      ...formData,
+      startTime: formData.slot,
+      endTime: end.toTimeString().slice(0, 5),
+    });
   };
+
+  // Date picker min/max
+  const today = new Date();
+  const minDate = today.toISOString().split('T')[0];
+  const maxDate = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  // Sports and courts
+  const sports = selectedTurf?.sportTypes || [];
+  const courts = selectedTurf?.courts || [];
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -140,97 +227,82 @@ const BookingForm = () => {
                     id="date"
                     value={formData.date}
                     onChange={handleChange}
+                    min={minDate}
+                    max={maxDate}
                     className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md"
                   />
                 </div>
               </div>
 
-              {/* Time Slots */}
-              {availableSlots.length > 0 && (
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Select Time Slot
-                  </label>
-                  {availableSlots.map((slot, index) => {
-                    const isSelected =
-                      formData.startTime === slot.startTime &&
-                      formData.endTime === slot.endTime &&
-                      formData.date === slot.date;
+              {/* Sport Dropdown */}
+              <div>
+                <label htmlFor="sport" className="block text-sm font-medium text-gray-700">Select Sport</label>
+                <select
+                  name="sport"
+                  id="sport"
+                  value={formData.sport}
+                  onChange={handleChange}
+                  required
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select Sport</option>
+                  {sports.map((sport) => (
+                    <option key={sport} value={sport}>{sport}</option>
+                  ))}
+                </select>
+              </div>
 
-                    return (
-                      <button
-                        key={index}
-                        type="button"
-                        onClick={() => {
-                          setFormData(prev => ({
-                            ...prev,
-                            date: slot.date,
-                            startTime: slot.startTime,
-                            endTime: slot.endTime,
-                          }));
-                        }}
-                        className={`w-full p-3 rounded-md border text-left ${
-                          isSelected
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                        }`}
-                      >
-                        <div className="flex justify-between">
-                          <span>{formatTime(slot.startTime)} - {formatTime(slot.endTime)}</span>
-                          <span className="text-sm">
-                            {new Date(slot.date).toLocaleDateString('en-US', {
-                              weekday: 'short',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
+              {/* Court Dropdown */}
+              <div>
+                <label htmlFor="court" className="block text-sm font-medium text-gray-700">Select Court</label>
+                <select
+                  name="court"
+                  id="court"
+                  value={formData.court}
+                  onChange={handleChange}
+                  required
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select Court</option>
+                  {courts.length > 0 ? courts.map((court, idx) => (
+                    <option key={court._id || idx} value={court.name || court}>{court.name || court}</option>
+                  )) : <option disabled>No courts available</option>}
+                </select>
+              </div>
+
+              {/* Time Slot Dropdown */}
+              <div>
+                <label htmlFor="slot" className="block text-sm font-medium text-gray-700">Select Start Time</label>
+                <select
+                  name="slot"
+                  id="slot"
+                  value={formData.slot}
+                  onChange={handleChange}
+                  required
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled={availableSlots.length === 0}
+                >
+                  <option value="">Select Time Slot</option>
+                  {availableSlots.map((slot, idx) => (
+                    <option key={idx} value={slot.startTime}>
+                      {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Hour Selector */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Number of Hours</label>
+                <div className="flex items-center gap-2 mt-1">
+                  <button type="button" onClick={() => handleHourChange(-1)} className="px-3 py-1 bg-gray-200 rounded text-lg font-bold">-</button>
+                  <span className="px-4 py-1 border rounded bg-white">{formData.hours}</span>
+                  <button type="button" onClick={() => handleHourChange(1)} className="px-3 py-1 bg-gray-200 rounded text-lg font-bold">+</button>
+                  <span className="text-xs text-gray-500 ml-2">(Max {maxHours} hr{maxHours > 1 ? 's' : ''})</span>
                 </div>
-              )}
-
-              {/* Inputs */}
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700">Full Name</label>
-                <input
-                  type="text"
-                  name="name"
-                  id="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
               </div>
 
-              <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Phone Number</label>
-                <input
-                  type="tel"
-                  name="phone"
-                  id="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
-                <input
-                  type="email"
-                  name="email"
-                  id="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
+              {/* Players */}
               <div>
                 <label htmlFor="players" className="block text-sm font-medium text-gray-700">Number of Players</label>
                 <input
