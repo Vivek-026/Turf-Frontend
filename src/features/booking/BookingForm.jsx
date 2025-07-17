@@ -7,7 +7,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { fetchTurf, clearSelectedTurf } from '../../store/slices/turfSlice';
 
 const formatTime = (time) => {
-  const date = new Date(`1970-01-01T${time}`);
+  const date = new Date(`1970-01-01T${time}`);  
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 };
 
@@ -15,18 +15,20 @@ const BookingForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  console.log(id);
 
   const [formData, setFormData] = useState({
     date: '',
     slot: '', // e.g. '09:00'
     hours: 1,
-    players: 1,
     sport: '',
     court: '',
   });
   const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
   const [maxHours, setMaxHours] = useState(5);
+  const user = useSelector((state) => state.auth.user);
+
 
   const { selectedTurf, selectedLoading, selectedError } = useSelector((state) => state.turfs);
 
@@ -168,26 +170,37 @@ const BookingForm = () => {
       toast.error('Please fill all required fields');
       return;
     }
+    
     // Validate slot availability
     const slotObj = availableSlots.find(slot => slot.startTime === formData.slot);
     if (!slotObj) {
       toast.error('Selected time slot is not available');
       return;
     }
+    
+    // 🟢 Add this line to get the day from the selected date
+    const day = new Date(formData.date).toLocaleString('en-US', { weekday: 'long' });
+    
     // Calculate end time
     const start = new Date(`${formData.date}T${formData.slot}`);
     const end = new Date(start.getTime() + formData.hours * 60 * 60 * 1000);
     const slotEnd = new Date(`${formData.date}T${slotObj.endTime}`);
+    console.log(formData,day,start,end,slotEnd,user.id,id);
     if (end > slotEnd) {
       toast.error('Selected duration exceeds available slot');
       return;
     }
+  
     createBooking({
-      ...formData,
+      ...formData, 
+      id,
+      userId: user.id,
+      day, 
       startTime: formData.slot,
       endTime: end.toTimeString().slice(0, 5),
     });
   };
+  
 
   // Date picker min/max
   const today = new Date();
@@ -264,6 +277,7 @@ const BookingForm = () => {
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select Court</option>
+                  <option value="court1">Court 1</option>
                   {courts.length > 0 ? courts.map((court, idx) => (
                     <option key={court._id || idx} value={court.name || court}>{court.name || court}</option>
                   )) : <option disabled>No courts available</option>}
@@ -302,20 +316,7 @@ const BookingForm = () => {
                 </div>
               </div>
 
-              {/* Players */}
-              <div>
-                <label htmlFor="players" className="block text-sm font-medium text-gray-700">Number of Players</label>
-                <input
-                  type="number"
-                  name="players"
-                  id="players"
-                  min="1"
-                  value={formData.players}
-                  onChange={handleChange}
-                  required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+              
 
               <button
                 type="submit"

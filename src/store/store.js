@@ -1,7 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
-import { authReducer } from './slices/authSlice';
-import { bookingsReducer } from './slices/bookingSlice';
-import { turfsReducer } from './slices/turfSlice';
+import authReducer from './slices/authSlice'; 
+import  bookingsReducer  from './slices/bookingSlice';
+import  turfsReducer  from './slices/turfSlice';
 import { authMiddleware } from '../middleware/authMiddleware';
 
 const store = configureStore({

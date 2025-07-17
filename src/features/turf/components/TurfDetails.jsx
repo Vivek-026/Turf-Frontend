@@ -118,11 +118,10 @@ const TurfDetails = () => {
                     <button
                       key={index}
                       onClick={() => setActiveImageIndex(index)}
-                      className={`p-1 rounded-full ${
-                        activeImageIndex === index
+                      className={`p-1 rounded-full ${activeImageIndex === index
                           ? 'bg-blue-500 text-white'
                           : 'bg-gray-300 text-white'
-                      }`}
+                        }`}
                     >
                       <span className="sr-only">Go to slide {index + 1}</span>
                       <span className="w-2 h-2 bg-white rounded-full" />
@@ -174,14 +173,14 @@ const TurfDetails = () => {
               <div className="flex items-center">
 
                 <span className="flex flex-wrap gap-2">
-                {selectedTurf.sportTypes && selectedTurf.sportTypes.map((sport) => (
-                  <span
-                    key={sport}
-                    className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-sm"
-                  >
-                    {sport}
-                  </span>
-                ))}
+                  {selectedTurf.sportTypes && selectedTurf.sportTypes.map((sport) => (
+                    <span
+                      key={sport}
+                      className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-sm"
+                    >
+                      {sport}
+                    </span>
+                  ))}
                 </span>
               </div>
             </div>
@@ -213,11 +212,16 @@ const TurfDetails = () => {
             {/* Book Now Button */}
             <div className="mt-8">
               <button
-                onClick={() => navigate(`/book/${selectedTurf._id}`)}
+                onClick={() =>
+                  navigate(`/book/${selectedTurf._id}`, {
+                    state: { price: selectedTurf.pricePerHour }, // 👈 send the price
+                  })
+                }
                 className="w-full bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 transition-colors"
               >
                 Book Now
               </button>
+
             </div>
           </div>
         </div>
